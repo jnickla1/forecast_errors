@@ -1,0 +1,31 @@
+Currently ONLY analyzing daily Tmax (plan to do Heat Index)
+
+Processing CCRI Liston Campus...
+table below only considers obs T>75°F
+ lead_days     rmse      mae  bias(Obs-F)   rmseNB  n_samples  correlation
+         0 4.488232 4.009615     3.817308 2.360592        104     0.913083
+         1 4.919545 4.375000     4.144231 2.650901        104     0.885457
+         2 5.101847 4.548077     4.298077 2.748705        104     0.873066
+
+ Warning (just hottest 1 hr coded now)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                0               0                0               0
+         1                0                0               0                0               0
+         2                0                0               0                0               0
+
+ Advisory (both options)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                4                0               0                5               4
+         1                4                0               0                5               4
+         2                4                0               0                4               4
+
+ Heatwave (>=90°F)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0               21                9               9               18              16
+         1               21                3               3               17              15
+         2               21                3               3               17              15
+  ✓ Calculated metrics for 255 days: 2020-01-20 to 2020-09-30
+
+
+
+========================================

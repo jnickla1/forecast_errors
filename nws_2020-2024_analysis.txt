@@ -1,0 +1,153 @@
+========================================
+ANALYZING BY STATION...
+========================================
+Currently analyzing Heat Index on hourly basis, max each day
+
+Processing CCRI Liston Campus...
+table below only considers obs T>75°F
+ lead_days     rmse      mae  bias(Obs-F)   rmseNB  n_samples  correlation
+         0 6.042775 5.400659     5.334057 2.839537        104     0.917852
+         1 6.449644 5.918311     5.775591 2.870618        104     0.912212
+         2 7.073529 6.324857     6.280090 3.255040        104     0.886157
+
+ Warning (just hottest 1 hr coded now)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                0               0                0               0
+         1                0                0               0                0               0
+         2                0                0               0                1               0
+
+ Advisory (both options)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                9                2               2                6               3
+         1                9                2               1                4               3
+         2                9                2               1                7               6
+
+ Heatwave (>=90°F)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0               36                6               6               32              27
+         1               36                6               6               27              27
+         2               36                4               4               23              21
+  ✓ Calculated metrics for 179 days: 2020-01-18 to 2020-09-30
+
+
+
+========================================
+Currently analyzing Heat Index on hourly basis, max each day
+
+Processing CCRI Liston Campus...
+table below only considers obs T>75°F
+ lead_days     rmse      mae  bias(Obs-F)   rmseNB  n_samples  correlation
+         0 4.360933 3.575432     1.608089 4.053614        105     0.903491
+         1 4.815946 3.895528     2.381250 4.186046        105     0.881669
+         2 5.244275 4.315259     3.342774 4.040827        105     0.883858
+
+ Warning (just hottest 1 hr coded now)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                0               0                0               0
+         1                0                0               0                0               0
+         2                0                0               0                2               0
+
+ Advisory (both options)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                7               0                7               0
+         1                0                4               0                7               0
+         2                0                4               0                3               0
+
+ Heatwave (>=90°F)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                9               13               6               17               9
+         1                9               13               9               17               9
+         2                9                9               6               13               8
+  ✓ Calculated metrics for 174 days: 2021-04-10 to 2021-09-30
+
+
+
+========================================
+Currently analyzing Heat Index on hourly basis, max each day
+
+Processing CCRI Liston Campus...
+table below only considers obs T>75°F
+ lead_days     rmse      mae  bias(Obs-F)   rmseNB  n_samples  correlation
+         0 3.493339 2.801730     1.259846 3.258252        106     0.940114
+         1 3.878325 3.082011     1.618110 3.524645        106     0.917213
+         2 4.075272 3.217533     1.964817 3.570341        106     0.886231
+
+ Warning (just hottest 1 hr coded now)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                0               0                0               0
+         1                0                0               0                0               0
+         2                0                0               0                0               0
+
+ Advisory (both options)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                7               0                8               0
+         1                0                6               0                7               0
+         2                0                0               0                5               0
+
+ Heatwave (>=90°F)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                6               12               6               15               6
+         1                6               12               6               12               6
+         2                6                8               5               12               5
+  ✓ Calculated metrics for 179 days: 2022-04-05 to 2022-09-30
+
+
+========================================
+Currently analyzing Heat Index on hourly basis, max each day
+
+Processing CCRI Liston Campus...
+table below only considers obs T>75°F
+ lead_days     rmse      mae  bias(Obs-F)   rmseNB  n_samples  correlation
+         0 4.887687 3.994158     3.471015 3.441154        108     0.892052
+         1 4.973158 4.218397     3.916185 3.065256        108     0.899209
+         2 5.412059 4.600852     4.377119 3.182956        108     0.907365
+
+ Warning (just hottest 1 hr coded now)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                0               0                0               0
+         1                0                0               0                0               0
+         2                0                0               0                0               0
+
+ Advisory (both options)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                2               0                6               0
+         1                0                0               0                2               0
+         2                0                0               0                4               0
+
+ Heatwave (>=90°F)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                7                7               7               12               7
+         1                7                3               3               13               7
+         2                7                3               3               14               7
+  ✓ Calculated metrics for 179 days: 2023-04-05 to 2023-09-30
+
+========================================
+Currently analyzing Heat Index on hourly basis, max each day
+
+Processing CCRI Liston Campus...
+table below only considers obs T>75°F
+ lead_days     rmse      mae  bias(Obs-F)   rmseNB  n_samples  correlation
+         0 3.979416 3.200649     2.217955 3.304002        111     0.903039
+         1 4.442382 3.697257     2.867084 3.393315        111     0.871006
+         2 4.564950 3.735020     2.685569 3.691408        111     0.868282
+
+ Warning (just hottest 1 hr coded now)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                0               0                0               0
+         1                0                0               0                0               0
+         2                0                0               0                0               0
+
+ Advisory (both options)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0                0                2               0                9               0
+         1                0                2               0                3               0
+         2                0                3               0                5               0
+
+ Heatwave (>=90°F)
+ lead_days  n_observed_days  n_forecast_days  n_matched_fore  n_foreCorr_days  n_matched_forC
+         0               11                9               6               15              10
+         1               11                9               6               13              10
+         2               11                7               3               11               6
+  ✓ Calculated metrics for 174 days: 2024-04-10 to 2024-09-30
+
+
