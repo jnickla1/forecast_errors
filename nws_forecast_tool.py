@@ -17,44 +17,20 @@ import os, re, json, shutil
 from pathlib import Path
 
 
-
+import epa_scraper
 
 
 class NWSForecastAnalyzer:
     """Main class for analyzing NWS forecast accuracy against EPA observations"""
     
-    def __init__(self, email: str, api_key: str):
-        """
-        Initialize the analyzer with EPA API credentials
-        
-        Args:
-            email: Email for EPA API access
-            api_key: API key for EPA API access
-        """
-        self.email = email
-        self.api_key = api_key
-        
-        # EPA monitoring stations in Providence
-        self.stations = {
-##            '440070030': {'name': 'Near Road',
-##                'location': 'Corner of Park/Hayes Streets',
-##                'lat': 41.829523,
-##                'lon': -71.417584},
-            '440070022': {
-                'name': 'CCRI Liston Campus',
-                'location': '1 Hilton Street',
-                'lat': 41.807523,
-                'lon': -71.413920
-            }
-        }
-        self.stat_suffixes = {k[-4:] for k in self.stations.keys()}
-
+    def __init__(self):
         self.DATE_FMT = "%Y-%m-%d"
         self.CACHE_DIR = Path()
         print(self.CACHE_DIR)
         self.FORECAST_RE = re.compile(r"forecasts_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.npz$")
         self.OBS_RE = re.compile(r"temp_obs_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.parquet$")
         self.OBS_HU = re.compile(r"humid_obs_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.parquet$")
+        self.stationname="Unassigned Obs Sation"
         
     def fetch_nws_forecasts(self, req_date: str, time_of_day:int =7) -> pd.DataFrame:
         """
@@ -173,66 +149,7 @@ class NWSForecastAnalyzer:
                                     'rel_humidity': relh,'wind_speed': wind})
         return date_match,forecast,tmaxmin
     
-    def fetch_epa_observations(self, start_date: str, end_date: str, 
-                              param: str = '62101') -> pd.DataFrame:
-        """
-        Fetch EPA AQS observations for temperature
-        
-        Args:
-            start_date: Start date in YYYYMMDD format
-            end_date: End date in YYYYMMDD format
-            param: EPA parameter code (62101 for temperature, 62201 for humidity)
-            
-        Returns:
-            DataFrame with hourly observations
-        """
-        print(f"Fetching EPA observations from {start_date} to {end_date}...")
-        
-        url = "https://aqs.epa.gov/data/api/sampleData/byState"
-        
-        all_data = []
-        
-        # Fetch data for each station
-        for station_id in self.stations.keys():
-            params = {
-                'email': self.email,
-                'key': self.api_key,
-                'param': param,
-                'bdate': start_date,
-                'edate': end_date,
-                'state': '44',  # Rhode Island
-             #   'site_number': station_id[-4:]  # Last 4 digits of station ID
-            }
-            response = requests.get(url, params=params, timeout=(5, 30),
-                    proxies={"http": None, "https": None}, ) # ignore env proxies)
-
-            if response.status_code == 200:
-                data = response.json()
-                if 'Data' in data and data['Data']:
-                    # Convert to DataFrame
-                    df = pd.DataFrame(data['Data'])
-                    
-                    # Extract only the columns we need
-                    df_clean = df[['date_gmt', 'time_gmt', 'sample_measurement', 
-                                  'site_number', 'county_code']].copy()
-                    df_clean = df_clean[df_clean['site_number'].isin(self.stat_suffixes)]
-                    
-                    # Create station ID to match your format (e.g., 440070022)
-                    df_clean['station_id'] = '44' + df_clean['county_code'] + df_clean['site_number']
-                    
-                    # Add station names
-                    #df_clean['station_name'] = df_clean['station_id'].map(
-                    #    {sid: info['name'] for sid, info in self.stations.items()})
-                    
-                    # Drop unnecessary columns
-                    df_clean = df_clean[['date_gmt', 'time_gmt', 'sample_measurement', 
-                                        'station_id']]
-                    # Rename for clarity
-                    #df_clean.rename(columns={'sample_measurement': 'temperature'}, inplace=True)
-                    
-                return df_clean
-            else:
-                print(f"Warning: Failed to fetch data for all of RI")
+    
         
 
     
@@ -332,7 +249,7 @@ class NWSForecastAnalyzer:
 
 
     
-    def calculate_metrics(self, forecast_df: pd.DataFrame, obs_df: pd.DataFrame, mt_threshold: float) -> pd.DataFrame:
+    def calculate_metrics(self, forecast_df: pd.DataFrame, obs_df: pd.DataFrame, mt_threshold: float, use_heat_index: bool) -> pd.DataFrame:
         """
         Calculate accuracy metrics comparing forecasts to observations
         
@@ -426,9 +343,8 @@ class NWSForecastAnalyzer:
                         seen_obs.setdefault(dt, o)
             if seen_obs:
                 ax1.plot(list(seen_obs.keys()), list(seen_obs.values()),
-                         marker='x', linestyle='None', color='black', label='Observed (CCRI Liston)')
+                         marker='x', linestyle='None', color='black', label=f'Observed ({self.stationname})')
 
-            ax1.set_ylabel("Heat Index °F")
             ax1.legend(loc='best', fontsize=9)
 
             # Bottom: differences (F-Obs) over time
@@ -438,7 +354,12 @@ class NWSForecastAnalyzer:
                     ax2.plot(pd.to_datetime(d["date"])+ pd.Timedelta(days=0.2*h), d["err"], marker='o', linestyle='None', color=colors[h], label=f'diff max{h}')
 
             ax2.axhline(0.0, color='0.6', linewidth=1)
-            ax2.set_ylabel("Error in Heat Index Δ°F")
+            if use_heat_index:
+                ax1.set_ylabel("Heat Index °F")
+                ax2.set_ylabel("Error in Heat Index Δ°F")
+            else:
+                ax1.set_ylabel("Max. Temperature °F")
+                ax2.set_ylabel("Error in Max. Temp. Δ°F")
             ax2.set_xlabel("Date")
             ax2.set_title("Difference to Observed Temperatures")
 
@@ -488,7 +409,7 @@ class NWSForecastAnalyzer:
             fig.suptitle(f"Warm-day RI Forecast Performance ({yr_txt})", fontsize=12)
 
             fig.tight_layout()
-            plt.savefig(f"warm_forecast{yr_txt}.png",dpi=500,bbox_inches='tight')
+            plt.savefig(f"warm_forecast{yr_txt}{self.stationname}.png",dpi=500,bbox_inches='tight')
 
         return metrics_df
     
@@ -733,7 +654,10 @@ class NWSForecastAnalyzer:
 
     def _concat_obs(self,dfs: list[pd.DataFrame]) -> pd.DataFrame:
         df = pd.concat(dfs, ignore_index=True)
-        df = df.drop_duplicates().sort_values("date_gmt").reset_index(drop=True)
+        if "date_gmt" in df.columns:
+            df = df.drop_duplicates().sort_values("date_gmt").reset_index(drop=True)
+        elif "date" in df.columns:
+            df = df.drop_duplicates().sort_values("date").reset_index(drop=True)
         return df
 
     def _archive_files(self,paths: list[Path]):
@@ -746,7 +670,7 @@ class NWSForecastAnalyzer:
 
     # ------------------------ Use within your retrieval flow ----------------------
 
-    def fetch_with_cache(self, start_date: str, end_date: str):
+    def fetch_with_cache(self, start_date: str, end_date: str, obs_source: str):
         """
         Returns:
           dates_forecast: list[datetime]
@@ -819,144 +743,229 @@ class NWSForecastAnalyzer:
             self._save_forecast_npz(f_path, dates_forecast, all_mmaxtemps, all_full_forecasts)
             self._archive_files([p for (p, *_ ) in f_overlap])
 
+        if obs_source == "epa_sensor":
 
-        # ---------- Observations in Temperature: check cache ----------
-        o_spans = self._list_span_files(self.CACHE_DIR / "obs", self.OBS_RE)
-        end_dto =  end_dt + timedelta(days=3)
-        o_cover, o_overlap, o_missing = self._cover_status(start_dt, end_dto, o_spans)
+            epa_sc= epa_scraper.epa_fetch(email="john_nicklas@brown.edu",api_key="mauvebird36")
+            
+            # ---------- Observations in Temperature: check cache ----------
+            o_spans = self._list_span_files(self.CACHE_DIR / "obs", self.OBS_RE)
+            end_dto =  end_dt + timedelta(days=3)
+            o_cover, o_overlap, o_missing = self._cover_status(start_dt, end_dto, o_spans)
 
-        if o_cover:
-            temp_obs = self._load_obs_parquet(o_cover[0])
-                # crop back to the requested window
-            mask = (pd.to_datetime(temp_obs['date']) >= start_dt) & \
-                   (pd.to_datetime(temp_obs['date']) <= end_dto)
-            temp_obs = temp_obs.loc[mask].reset_index(drop=True)
-        else:
-            loaded_obs = []
-            for p, s, e in o_overlap:
-                loaded_obs.append(self._load_obs_parquet(p))
-
-            # Fetch missing ranges in 5-day chunks (your existing EPA logic)
-            fetched_obs = []
-            for (ms, me) in o_missing or []:
-                cur = ms
-                chunk_days = 5
-                dfs = []
-                while cur <= me:
-                    chunk_end = min(cur + timedelta(days=chunk_days - 1), me)
-                    epa_start = cur.strftime("%Y%m%d")
-                    epa_end   = (chunk_end ).strftime("%Y%m%d")
-                    df_chunk = self.fetch_epa_observations(epa_start, epa_end, '62101')
-                    if df_chunk is not None and not df_chunk.empty:
-                        dfs.append(df_chunk)
-                    cur = chunk_end + timedelta(days=1)
-                if dfs:
-                    fetched_obs.append(pd.concat(dfs, ignore_index=True))
-
-            if loaded_obs or fetched_obs:
-                temp_obs = self._concat_obs(loaded_obs + fetched_obs)
+            if o_cover:
+                temp_obs = self._load_obs_parquet(o_cover[0])
+                    # crop back to the requested window
+                mask = (pd.to_datetime(temp_obs['date']) >= start_dt) & \
+                       (pd.to_datetime(temp_obs['date']) <= end_dto)
+                temp_obs = temp_obs.loc[mask].reset_index(drop=True)
             else:
-                # Nothing cached → fetch entire span
-                cur = start_dt
-                chunk_days = 5
-                dfs = []
-                while cur <= end_dt:
-                    chunk_end = min(cur + timedelta(days=chunk_days - 1), end_dt)
-                    epa_start = cur.strftime("%Y%m%d")
-                    epa_end   = (chunk_end ).strftime("%Y%m%d")
-                    df_chunk = self.fetch_epa_observations(epa_start, epa_end, '62101')
-                    if df_chunk is not None and not df_chunk.empty:
-                        dfs.append(df_chunk)
-                    cur = chunk_end + timedelta(days=1)
-                temp_obs = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+                loaded_obs = []
+                for p, s, e in o_overlap:
+                    loaded_obs.append(self._load_obs_parquet(p))
 
-            # Normalize and save/archive
-            if not temp_obs.empty:
-                temp_obs = temp_obs.drop_duplicates().sort_values("date_gmt").reset_index(drop=True)
-                temp_obs['datetime_utc'] = pd.to_datetime(
-                    temp_obs['date_gmt'] + ' ' + temp_obs['time_gmt'],
-                    format='%Y-%m-%d %H:%M'
-                ).dt.tz_localize('UTC')
-                temp_obs['datetime_local'] = temp_obs['datetime_utc'].dt.tz_convert('US/Eastern')
-                temp_obs['date'] = temp_obs['datetime_local'].dt.strftime('%Y-%m-%d')
-                temp_obs['time_local'] = temp_obs['datetime_local'].dt.strftime('%H:%M')
+                # Fetch missing ranges in 5-day chunks (your existing EPA logic)
+                fetched_obs = []
+                for (ms, me) in o_missing or []:
+                    cur = ms
+                    chunk_days = 5
+                    dfs = []
+                    while cur <= me:
+                        chunk_end = min(cur + timedelta(days=chunk_days - 1), me)
+                        epa_start = cur.strftime("%Y%m%d")
+                        epa_end   = (chunk_end ).strftime("%Y%m%d")
+                        df_chunk = epa_sc.fetch_epa_observations(epa_start, epa_end, '62101')
+                        if df_chunk is not None and not df_chunk.empty:
+                            dfs.append(df_chunk)
+                        cur = chunk_end + timedelta(days=1)
+                    if dfs:
+                        fetched_obs.append(pd.concat(dfs, ignore_index=True))
 
-            o_path = self.CACHE_DIR / "obs" / f"temp_obs_{self._span_key(start_dt, end_dto)}.parquet"
-            self._save_obs_parquet(o_path, temp_obs)
-            self._archive_files([p for (p, *_ ) in o_overlap])
+                if loaded_obs or fetched_obs:
+                    temp_obs = self._concat_obs(loaded_obs + fetched_obs)
+                else:
+                    # Nothing cached → fetch entire span
+                    cur = start_dt
+                    chunk_days = 5
+                    dfs = []
+                    while cur <= end_dt:
+                        chunk_end = min(cur + timedelta(days=chunk_days - 1), end_dt)
+                        epa_start = cur.strftime("%Y%m%d")
+                        epa_end   = (chunk_end ).strftime("%Y%m%d")
+                        df_chunk = epa_sc.fetch_epa_observations(epa_start, epa_end, '62101')
+                        if df_chunk is not None and not df_chunk.empty:
+                            dfs.append(df_chunk)
+                        cur = chunk_end + timedelta(days=1)
+                    temp_obs = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+                # Normalize and save/archive
+                if not temp_obs.empty:
+                    temp_obs = temp_obs.drop_duplicates().sort_values("date_gmt").reset_index(drop=True)
+                    temp_obs['datetime_utc'] = pd.to_datetime(
+                        temp_obs['date_gmt'] + ' ' + temp_obs['time_gmt'],
+                        format='%Y-%m-%d %H:%M'
+                    ).dt.tz_localize('UTC')
+                    temp_obs['datetime_local'] = temp_obs['datetime_utc'].dt.tz_convert('US/Eastern')
+                    temp_obs['date'] = temp_obs['datetime_local'].dt.strftime('%Y-%m-%d')
+                    temp_obs['time_local'] = temp_obs['datetime_local'].dt.strftime('%H:%M')
+
+                o_path = self.CACHE_DIR / "obs" / f"temp_obs_{self._span_key(start_dt, end_dto)}.parquet"
+                self._save_obs_parquet(o_path, temp_obs)
+                self._archive_files([p for (p, *_ ) in o_overlap])
 
 
-        # ---------- Observations in Humidity: check cache ----------
-        oh_spans = self._list_span_files(self.CACHE_DIR / "obs", self.OBS_HU)
-        oh_cover, oh_overlap, oh_missing = self._cover_status(start_dt, end_dto, oh_spans)
+            # ---------- Observations in Humidity: check cache ----------
+            oh_spans = self._list_span_files(self.CACHE_DIR / "obs", self.OBS_HU)
+            oh_cover, oh_overlap, oh_missing = self._cover_status(start_dt, end_dto, oh_spans)
 
-        if oh_cover:
-            humid_obs = self._load_obs_parquet(oh_cover[0])
-                # crop back to the requested window
-            mask = (pd.to_datetime(humid_obs['date']) >= start_dt) & \
-                   (pd.to_datetime(humid_obs['date']) <= end_dto)
-            humid_obs = humid_obs.loc[mask].reset_index(drop=True)
-        else:
-            loaded_obs = []
-            for p, s, e in oh_overlap:
-                loaded_obs.append(self._load_obs_parquet(p))
-
-            # Fetch missing ranges in 5-day chunks (your existing EPA logic)
-            fetched_obs = []
-            for (ms, me) in oh_missing or []:
-                cur = ms
-                chunk_days = 5
-                dfs = []
-                while cur <= me:
-                    chunk_end = min(cur + timedelta(days=chunk_days - 1), me)
-                    epa_start = cur.strftime("%Y%m%d")
-                    epa_end   = (chunk_end ).strftime("%Y%m%d")
-                    df_chunk = self.fetch_epa_observations(epa_start, epa_end, '62201')
-                    if df_chunk is not None and not df_chunk.empty:
-                        dfs.append(df_chunk)
-                    cur = chunk_end + timedelta(days=1)
-                if dfs:
-                    fetched_obs.append(pd.concat(dfs, ignore_index=True))
-
-            if loaded_obs or fetched_obs:
-                humid_obs = self._concat_obs(loaded_obs + fetched_obs)
+            if oh_cover:
+                humid_obs = self._load_obs_parquet(oh_cover[0])
+                    # crop back to the requested window
+                mask = (pd.to_datetime(humid_obs['date']) >= start_dt) & \
+                       (pd.to_datetime(humid_obs['date']) <= end_dto)
+                humid_obs = humid_obs.loc[mask].reset_index(drop=True)
             else:
-                # Nothing cached → fetch entire span
-                cur = start_dt
-                chunk_days = 5
-                dfs = []
-                while cur <= end_dt:
-                    chunk_end = min(cur + timedelta(days=chunk_days - 1), end_dt)
-                    epa_start = cur.strftime("%Y%m%d")
-                    epa_end   = (chunk_end ).strftime("%Y%m%d")
-                    df_chunk = self.fetch_epa_observations(epa_start, epa_end, '62201')
-                    if df_chunk is not None and not df_chunk.empty:
-                        dfs.append(df_chunk)
-                    cur = chunk_end + timedelta(days=1)
-                humid_obs = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+                loaded_obs = []
+                for p, s, e in oh_overlap:
+                    loaded_obs.append(self._load_obs_parquet(p))
 
-            # Normalize and save/archive
-            if not humid_obs.empty:
-                humid_obs = humid_obs.drop_duplicates().sort_values("date_gmt").reset_index(drop=True)
-                humid_obs['datetime_utc'] = pd.to_datetime(
-                    humid_obs['date_gmt'] + ' ' + humid_obs['time_gmt'],
-                    format='%Y-%m-%d %H:%M'
-                ).dt.tz_localize('UTC')
-                humid_obs['datetime_local'] = humid_obs['datetime_utc'].dt.tz_convert('US/Eastern')
-                humid_obs['date'] = humid_obs['datetime_local'].dt.strftime('%Y-%m-%d')
-                humid_obs['time_local'] = humid_obs['datetime_local'].dt.strftime('%H:%M')
+                # Fetch missing ranges in 5-day chunks (your existing EPA logic)
+                fetched_obs = []
+                for (ms, me) in oh_missing or []:
+                    cur = ms
+                    chunk_days = 5
+                    dfs = []
+                    while cur <= me:
+                        chunk_end = min(cur + timedelta(days=chunk_days - 1), me)
+                        epa_start = cur.strftime("%Y%m%d")
+                        epa_end   = (chunk_end ).strftime("%Y%m%d")
+                        df_chunk = epa_sc.fetch_epa_observations(epa_start, epa_end, '62201')
+                        if df_chunk is not None and not df_chunk.empty:
+                            dfs.append(df_chunk)
+                        cur = chunk_end + timedelta(days=1)
+                    if dfs:
+                        fetched_obs.append(pd.concat(dfs, ignore_index=True))
 
-            o_path = self.CACHE_DIR / "obs" / f"humid_obs_{self._span_key(start_dt, end_dto)}.parquet"
-            self._save_obs_parquet(o_path, humid_obs)
-            self._archive_files([p for (p, *_ ) in oh_overlap])
+                if loaded_obs or fetched_obs:
+                    humid_obs = self._concat_obs(loaded_obs + fetched_obs)
+                else:
+                    # Nothing cached → fetch entire span
+                    cur = start_dt
+                    chunk_days = 5
+                    dfs = []
+                    while cur <= end_dt:
+                        chunk_end = min(cur + timedelta(days=chunk_days - 1), end_dt)
+                        epa_start = cur.strftime("%Y%m%d")
+                        epa_end   = (chunk_end ).strftime("%Y%m%d")
+                        df_chunk = epa_sc.fetch_epa_observations(epa_start, epa_end, '62201')
+                        if df_chunk is not None and not df_chunk.empty:
+                            dfs.append(df_chunk)
+                        cur = chunk_end + timedelta(days=1)
+                    humid_obs = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-        # Ensure obs dates align to forecast dates if you need a strict match
-        # (Optional) filter temp_obs to only forecast dates:
-        #if not temp_obs.empty:
-        #    keep_dates = set(d.strftime(self.DATE_FMT) for d in dates_forecast)
-        #    temp_obs = temp_obs[temp_obs['date'].isin(keep_dates)].copy()
+                # Normalize and save/archive
+                if not humid_obs.empty:
+                    humid_obs = humid_obs.drop_duplicates().sort_values("date_gmt").reset_index(drop=True)
+                    humid_obs['datetime_utc'] = pd.to_datetime(
+                        humid_obs['date_gmt'] + ' ' + humid_obs['time_gmt'],
+                        format='%Y-%m-%d %H:%M'
+                    ).dt.tz_localize('UTC')
+                    humid_obs['datetime_local'] = humid_obs['datetime_utc'].dt.tz_convert('US/Eastern')
+                    humid_obs['date'] = humid_obs['datetime_local'].dt.strftime('%Y-%m-%d')
+                    humid_obs['time_local'] = humid_obs['datetime_local'].dt.strftime('%H:%M')
 
-        return dates_forecast, all_mmaxtemps, all_full_forecasts, temp_obs, humid_obs
+                o_path = self.CACHE_DIR / "obs" / f"humid_obs_{self._span_key(start_dt, end_dto)}.parquet"
+                self._save_obs_parquet(o_path, humid_obs)
+                self._archive_files([p for (p, *_ ) in oh_overlap])
+
+            # Ensure obs dates align to forecast dates if you need a strict match
+            # (Optional) filter temp_obs to only forecast dates:
+            #if not temp_obs.empty:
+            #    keep_dates = set(d.strftime(self.DATE_FMT) for d in dates_forecast)
+            #    temp_obs = temp_obs[temp_obs['date'].isin(keep_dates)].copy()
+
+            if temp_obs['station_id'].nunique() == 1:
+                statnumber = temp_obs['station_id'][0]
+                self.stationname = epa_sc.stations[statnumber]['name']
+            
+            breakpoint()
+
+        elif obs_source.startswith("WU_"):
+            import weatherunderground_scraper as wu
+            wu_id = obs_source[3:]
+            #don't have to change variable names, completely separate block
+            newOBS_HU = re.compile(obs_source + r"_obs_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.parquet$")
+            oh_spans = self._list_span_files(self.CACHE_DIR / "obs", newOBS_HU)
+            self.stationname = obs_source
+            end_dto =  end_dt + timedelta(days=3)
+            oh_cover, oh_overlap, oh_missing = self._cover_status(start_dt, end_dto, oh_spans)
+
+            if oh_cover:
+                humid_obs = self._load_obs_parquet(oh_cover[0])
+                    # crop back to the requested window
+                mask = (pd.to_datetime(humid_obs['date']) >= start_dt) & \
+                       (pd.to_datetime(humid_obs['date']) <= end_dto)
+                humid_obs = humid_obs.loc[mask].reset_index(drop=True)
+            else:
+                loaded_obs = []
+                for p, s, e in oh_overlap:
+                    loaded_obs.append(self._load_obs_parquet(p))
+
+                # Fetch missing ranges in 5-day chunks (your existing EPA logic)
+                fetched_obs = []
+                for (ms, me) in oh_missing or []:
+                    cur = ms
+                    dfs = []
+                    while cur <= me:
+                        epa_start = cur.strftime("%Y-%m-%d")
+                        df_chunk = wu.get_day_data_uid(epa_start,wu_id)
+                        if df_chunk is not None and not df_chunk.empty:
+                            dfs.append(df_chunk)
+                        cur = cur + timedelta(days=1)
+                    if dfs:
+                        fetched_obs.append(pd.concat(dfs, ignore_index=True))
+
+                if loaded_obs or fetched_obs:
+                    humid_obs = self._concat_obs(loaded_obs + fetched_obs)
+                else:
+                    # Nothing cached → fetch entire span
+                    cur = start_dt
+                    dfs = []
+                    while cur <= end_dt:
+                        epa_start = cur.strftime("%Y-%m-%d")
+                        df_chunk = epa_sc.fetch_epa_observations(epa_start, epa_end, '62201')
+                        if df_chunk is not None and not df_chunk.empty:
+                            dfs.append(df_chunk)
+                        cur = cur + timedelta(days=1)
+                    humid_obs = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+                # Normalize and save/archive
+                if not humid_obs.empty:
+                    humid_obs = humid_obs.drop_duplicates().sort_values("date").reset_index(drop=True)
+                    humid_obs['datetime_local'] = pd.to_datetime(
+                        humid_obs['date'] + ' ' + humid_obs['time_local'],
+                        format='%Y-%m-%d %H:%M'
+                    ).dt.tz_localize('US/Eastern')
+                    humid_obs['datetime_utc'] = humid_obs['datetime_local'].dt.tz_convert('UTC')
+                    humid_obs['date_gmt'] = humid_obs['datetime_utc'].dt.strftime('%Y-%m-%d')
+                    humid_obs['time_gmt'] = humid_obs['datetime_utc'].dt.strftime('%H:%M')
+
+
+                o_path = self.CACHE_DIR / "obs" / f"{obs_source}_obs_{self._span_key(start_dt, end_dto)}.parquet"
+                self._save_obs_parquet(o_path, humid_obs)
+                self._archive_files([p for (p, *_ ) in oh_overlap])
+    
+            #trim down to necessary columns only
+            all_obs=humid_obs.copy()
+            temp_obs = all_obs[['date_gmt','time_gmt','station_id','Temperature',
+                          'datetime_utc','datetime_local','date','time_local']]
+            temp_obs['Temperature'] = (temp_obs['Temperature'].str.replace(r'\s*°F', '', regex=True).astype(float))
+            temp_obs = temp_obs.rename(columns={'Temperature': 'sample_measurement'})
+            humid_obs = all_obs[['date_gmt','time_gmt','station_id','Humidity',
+                          'datetime_utc','datetime_local','date','time_local']]
+            humid_obs['Humidity'] = (humid_obs['Humidity'].str.replace(r'\s*%', '', regex=True).astype(float))
+            humid_obs = humid_obs.rename(columns={'Humidity': 'sample_measurement'})
+                
+        return dates_forecast, all_mmaxtemps, all_full_forecasts,temp_obs,humid_obs
 
 
 
@@ -981,7 +990,9 @@ class NWSForecastAnalyzer:
         print("\n" + "="*40)
         print("FETCHING DATA...")
         print("="*40)
-        dates_forecast, all_mmaxtemps, all_full_forecasts, temp_obs, humid_obs = self.fetch_with_cache( start_date, end_date)
+             
+        #dates_forecast, all_mmaxtemps, all_full_forecasts, temp_obs, humid_obs = self.fetch_with_cache( start_date, end_date , 'epa_sensor')
+        dates_forecast, all_mmaxtemps, all_full_forecasts, temp_obs, humid_obs = self.fetch_with_cache( start_date, end_date , 'WU_KRIPROVI104')
         minmaxar = np.array(all_mmaxtemps)
 
 
@@ -995,7 +1006,7 @@ class NWSForecastAnalyzer:
             pred_condensed = pd.DataFrame({ "bulletin_date": dates_forecast, "max0": minmaxar[:, 0],
                                             "max1": minmaxar[:, 2], "max2": minmaxar[:, 4], })
             # Process daily maxima
-            daily_max = self.process_daily_maxima(temp_obs)
+            station_data = self.process_daily_maxima(temp_obs)
             print("Currently ONLY analyzing daily Tmax (plan to do Heat Index)")
         else:
             df_comb_obs = pd.merge(
@@ -1013,7 +1024,7 @@ class NWSForecastAnalyzer:
             heat_obs['sample_measurement'] = hi
             heat_obs = heat_obs[['date_gmt','time_gmt','sample_measurement','station_id',
                                  'datetime_utc','datetime_local','date','time_local']]
-            daily_max = self.process_daily_maxima(heat_obs)
+            station_data = self.process_daily_maxima(heat_obs)
             
             himaxes = np.array(self.hi_max_from_full(all_full_forecasts))
             pred_condensed = pd.DataFrame({ "bulletin_date": dates_forecast,"max0": himaxes[:, 0],
@@ -1031,50 +1042,49 @@ class NWSForecastAnalyzer:
 
         
         
-        for station_id in self.stations.keys():
-            station_data = daily_max[daily_max['station_id'] == station_id]
+        #for station_id in self.stations.keys(): #only looking at one station at at time for now
+            #station_data = daily_max[daily_max['station_id'] == station_id]
             
-            if not station_data.empty:
-                print(f"\nProcessing {self.stations[station_id]['name']}...")
-                print(f"table below only considers obs T>{min_temp_threshold}°F")
-                station_metrics = self.calculate_metrics(pred_condensed, station_data,min_temp_threshold)
-                print(station_metrics.to_string(index=False))
-                
-                print("\n Warning (just hottest 1 hr coded now)")
-                heat_events = self.identify_heat_events(pred_condensed,station_data,station_metrics['bias(Obs-F)'],metric='warning')
-                print(heat_events.to_string(index=False))
-                
-                print("\n Advisory (both options)")
-                heat_events = self.identify_heat_events(pred_condensed,station_data,station_metrics['bias(Obs-F)'])
-                print(heat_events.to_string(index=False))
+        if not station_data.empty:
+            print(f"\nProcessing {self.stationname}...")
+            print(f"table below only considers obs T>{min_temp_threshold}°F")
+            station_metrics = self.calculate_metrics(pred_condensed, station_data,min_temp_threshold, use_heat_index)
+            print(station_metrics.to_string(index=False))
+            
+            print("\n Warning (just hottest 1 hr coded now)")
+            heat_events = self.identify_heat_events(pred_condensed,station_data,station_metrics['bias(Obs-F)'],metric='warning')
+            print(heat_events.to_string(index=False))
+            
+            print("\n Advisory (both options)")
+            heat_events = self.identify_heat_events(pred_condensed,station_data,station_metrics['bias(Obs-F)'])
+            print(heat_events.to_string(index=False))
 
-                print("\n Heatwave (>=90°F)")
-                heat_events = self.identify_heat_events(pred_condensed,station_data,station_metrics['bias(Obs-F)'],metric='heatwave')
-                print(heat_events.to_string(index=False))
+            print("\n Heatwave (>=90°F)")
+            heat_events = self.identify_heat_events(pred_condensed,station_data,station_metrics['bias(Obs-F)'],metric='heatwave')
+            print(heat_events.to_string(index=False))
 
-                
+            
 ##                results[station_id] = {
 ##                    'station_name': self.stations[station_id]['name'],
 ##                    'metrics': station_metrics,
 ##                    'heat_events': heat_events,
 ##                    'data': station_data  # Store for potential further analysis
 ##                }
-                print(f"  ✓ Calculated metrics for {len(pred_condensed)} days: {start_date} to {end_date}")
-            else:
-                print(f"\n⚠ No data above threshold for {self.stations[station_id]['name']}")
+            print(f"  ✓ Calculated metrics for {len(pred_condensed)} days: {start_date} to {end_date}")
+        else:
+            print(f"\n⚠ No data above threshold for {self.stations[station_id]['name']}")
         
         return results
     
 
 import argparse
 
+
 # Example usage
 if __name__ == "__main__":
     # Initialize analyzer with your EPA credentials
-    analyzer = NWSForecastAnalyzer(
-        email="john_nicklas@brown.edu",
-        api_key="mauvebird36"
-    )
+
+    analyzer = NWSForecastAnalyzer()
     parser = argparse.ArgumentParser()
     parser.add_argument("year", type=int, help="Year to process")
     args = parser.parse_args()
@@ -1082,9 +1092,9 @@ if __name__ == "__main__":
 
     # Run analysis for summer 2024 as an example
     analyzer.run_analysis(
-        start_date=f"{year}-04-05",
+        start_date=f"{year}-04-10",  #4-10 9-30
         end_date=f"{year}-09-30", #2025 not yet available on EPA site 04-01 to 2024-09-30
-        min_temp_threshold=75, use_heat_index=True,
+        min_temp_threshold=75, use_heat_index=True, 
     )
     
 
