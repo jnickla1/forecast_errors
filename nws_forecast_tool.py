@@ -887,7 +887,6 @@ class NWSForecastAnalyzer:
                 statnumber = temp_obs['station_id'][0]
                 self.stationname = epa_sc.stations[statnumber]['name']
             
-            breakpoint()
 
         elif obs_source.startswith("WU_"):
             import weatherunderground_scraper as wu
